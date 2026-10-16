@@ -141,8 +141,9 @@ section{position:relative}
 /* ===== 3. Созвездие ===== */
 .constellation{position:relative;height:440px;margin-top:20px}
 .constellation > svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
-.c-line{fill:none;stroke:var(--neon);stroke-width:1.5;stroke-linecap:round;filter:drop-shadow(0 0 4px rgba(91,124,255,.9));stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset .7s ease}
-.constellation.is-drawn .c-line{stroke-dashoffset:0}
+.c-beams{position:absolute;inset:0;pointer-events:none}
+.c-beam{position:absolute;height:1.5px;margin-top:-.75px;border-radius:2px;background:var(--neon);box-shadow:0 0 6px rgba(91,124,255,.9);transform-origin:0 50%;transform:rotate(var(--a)) scaleX(0);transition:transform .7s ease}
+.constellation.is-drawn .c-beam{transform:rotate(var(--a)) scaleX(1)}
 .c-step{position:absolute;left:var(--x);top:var(--y);width:150px;margin-left:-75px;text-align:center;opacity:.35;transition:opacity .5s}
 .c-step.is-on{opacity:1}
 .c-star{position:relative;display:block;width:16px;height:16px;margin:-8px auto 0;border-radius:50%;background:#dfe4ff;box-shadow:0 0 0 4px rgba(91,124,255,.18),0 0 18px 4px rgba(91,124,255,.75)}
@@ -354,6 +355,7 @@ section{position:relative}
 .stage__coins{position:absolute;inset:0;pointer-events:none}
 .coin{position:absolute;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#FFE3A3,#FFB547 55%,#C9831F);box-shadow:0 0 8px rgba(255,181,71,.8);opacity:0}
 .finale.s-coins .coin{animation:coin 1.3s ease-in var(--d) both}
+@keyframes coin-fade{0%{opacity:0}35%{opacity:1}100%{opacity:0}}
 @keyframes coin{0%{opacity:0;transform:translate(0,0) scale(.6)}15%{opacity:1}80%{opacity:1}100%{opacity:0;transform:translate(var(--dx),var(--fall)) scale(1)}}
 
 .nodes{list-style:none;margin:0;padding:0}
@@ -454,10 +456,21 @@ section{position:relative}
 
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
-  *,*::before,*::after{animation:none!important;transition-duration:.01ms!important}
-  .reveal{transform:none;transition:opacity .4s ease!important}
+  /* режим «уменьшить движение»: ничего не летит и не двигается, всё появляется плавным проявлением */
+  .reveal{transform:none}
   .shot:hover,.shot:focus-within,.case-tile:hover{transform:rotate(var(--r,0deg))}
-  .c-line{stroke-dashoffset:0}
+  .case-tile__cover img,.case-tile:hover .case-tile__cover img{transform:none}
+  .pstar__halo,.c-step--final.is-on .c-star{animation:none}
+  .c-beam,.beam{transform:rotate(var(--a)) scaleX(1)!important;opacity:0;transition:opacity .6s ease}
+  .constellation.is-drawn .c-beam,.beam.is-on{opacity:1}
+  .beam--dim.is-on{opacity:.38}
+  .node__dot,.node.is-on .node__dot{transform:none}
+  .node__dot::after{transform:none!important}
+  .win,.win.is-on{transform:none}
+  .funnel,.finale.s-funnel .funnel,.finale.s-funnel[data-v="leads"] .funnel{transform:none}
+  .finale.s-coins .coin{animation:coin-fade 1.4s ease var(--d) both}
+  .c-spark{transition:opacity .45s ease!important}
+  .case-panel__box,.case-panel.is-open .case-panel__box{transform:none}
 }
 /* Слабые устройства: меньше размытия */
 @media (max-width:760px){.glass{-webkit-backdrop-filter:none;backdrop-filter:none;background:rgba(20,17,72,.82)}}
@@ -479,7 +492,7 @@ section{position:relative}
   .tile--art,.help__art{display:none}
   .tiles,.help__grid{grid-template-columns:1fr}
   .constellation{height:auto!important}
-  .constellation > svg{display:none!important}
+  .constellation > svg,.c-beams{display:none!important}
   .c-step{position:static!important;opacity:1!important;width:auto!important;margin:0 0 6px!important;text-align:left!important;display:flex;gap:10px;align-items:center}
   .c-step .c-label{position:static!important}
   .c-star{margin:0!important;box-shadow:none!important}

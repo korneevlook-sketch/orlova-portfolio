@@ -92,21 +92,21 @@
   /* ---------- Созвездие ---------- */
   (function constellation() {
     var box = $('#constellation'); if (!box) return;
-    var steps = $$('.c-step', box), NS = 'http://www.w3.org/2000/svg', svg, lines = [], pts = [];
+    var steps = $$('.c-step', box), wrap, lines = [], pts = [];
     function build() {
-      if (svg) svg.remove();
-      svg = document.createElementNS(NS, 'svg'); svg.setAttribute('aria-hidden', 'true');
+      if (wrap) wrap.remove();
+      wrap = document.createElement('div'); wrap.className = 'c-beams'; wrap.setAttribute('aria-hidden', 'true');
       var b = box.getBoundingClientRect();
       pts = steps.map(function (s) { var r = $('.c-star', s).getBoundingClientRect(); return [r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]; });
       lines = [];
       for (var i = 0; i < pts.length - 1; i++) {
-        var l = document.createElementNS(NS, 'line');
-        l.setAttribute('x1', pts[i][0]); l.setAttribute('y1', pts[i][1]); l.setAttribute('x2', pts[i + 1][0]); l.setAttribute('y2', pts[i + 1][1]);
-        l.setAttribute('pathLength', '1'); l.setAttribute('class', 'c-line');
-        l.style.transitionDelay = (reduce ? 0 : i * .32) + 's';
-        svg.appendChild(l); lines.push(l);
+        var l = document.createElement('span'), dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1];
+        l.className = 'c-beam'; l.style.left = pts[i][0] + 'px'; l.style.top = pts[i][1] + 'px';
+        l.style.width = Math.hypot(dx, dy) + 'px'; l.style.setProperty('--a', Math.atan2(dy, dx) + 'rad');
+        l.style.transitionDelay = (i * .32) + 's';
+        wrap.appendChild(l); lines.push(l);
       }
-      box.insertBefore(svg, box.firstChild);
+      box.insertBefore(wrap, box.firstChild);
     }
     // янтарный огонёк идёт от шага к шагу, по кругу, пока схема на экране
     var spark = document.createElement('span'), sparkI = 0, sparkT = null, visible = false;
@@ -117,6 +117,14 @@
     }
     function hop() {
       if (!visible || !pts.length) { sparkT = null; return; }
+      if (reduce) {                                       // без движения: гаснет на одном шаге и загорается на следующем
+        spark.classList.remove('is-on');
+        sparkT = setTimeout(function () {
+          sparkI = sparkI >= pts.length - 1 ? 0 : sparkI + 1; place(sparkI, false); spark.classList.add('is-on');
+          sparkT = setTimeout(hop, 900);
+        }, 500);
+        return;
+      }
       if (sparkI >= pts.length - 1) {                    // дошёл до «Внедрения»: гаснет и начинает снова
         spark.classList.remove('is-on');
         sparkT = setTimeout(function () { sparkI = 0; place(0, false); spark.classList.add('is-on'); sparkT = setTimeout(hop, 700); }, 1100);
@@ -126,7 +134,7 @@
       sparkT = setTimeout(hop, 1150);
     }
     function startSpark() {
-      if (reduce || sparkT || !visible) return;
+      if (sparkT || !visible) return;
       place(sparkI, false); spark.classList.add('is-on'); sparkT = setTimeout(hop, 700);
     }
     if ('IntersectionObserver' in window) {
@@ -138,14 +146,14 @@
     }
     function light() {
       box.classList.add('is-drawn');
-      steps.forEach(function (s, i) { setTimeout(function () { s.classList.add('is-on'); }, reduce ? 0 : i * 320); });
-      setTimeout(startSpark, reduce ? 0 : steps.length * 320 + 600);
+      steps.forEach(function (s, i) { setTimeout(function () { s.classList.add('is-on'); }, i * 320); });
+      setTimeout(startSpark, steps.length * 320 + 600);
     }
     build();
     var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { var drawn = box.classList.contains('is-drawn'); build(); if (pts[sparkI]) place(sparkI, false); if (drawn) { lines.forEach(function (l) { l.style.transitionDelay = '0s'; }); } }, 150); });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(build);
-    if ('IntersectionObserver' in window && !reduce) {
-      var o = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { light(); o.disconnect(); } }, { threshold: .35 });
+    if ('IntersectionObserver' in window) {
+      var o = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { light(); o.disconnect(); } }, { threshold: .2 });
       o.observe(box);
     } else light();
   })();
@@ -153,7 +161,7 @@
   /* ---------- Чем могу помочь: звёзды загораются по очереди ---------- */
   (function helpStars() {
     var items = $$('.help-item'), art = $('#star-art'); if (!items.length) return;
-    if (!('IntersectionObserver' in window) || reduce) { items.forEach(function (i) { i.classList.add('is-lit'); }); if (art) art.classList.add('is-flare'); return; }
+    if (!('IntersectionObserver' in window)) { items.forEach(function (i) { i.classList.add('is-lit'); }); if (art) art.classList.add('is-flare'); return; }
     var o = new IntersectionObserver(function (es) {
       es.forEach(function (e) {
         if (e.isIntersecting) {
@@ -452,14 +460,14 @@
       requestAnimationFrame(function () { requestAnimationFrame(function () { answer.classList.remove('is-pre'); }); });
       later(function () {
         card.classList.remove('is-pre');
-        if (!reduce) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
         card.focus({ preventScroll: true });
-      }, reduce ? 0 : 600);
+      }, 600);
     }
     function run() {
       state = 'running'; setRunning(true); applyVariant(); layout();
       var sb = stage.getBoundingClientRect();
-      if (sb.bottom > window.innerHeight) window.scrollBy({ top: sb.bottom - window.innerHeight + 8, behavior: 'smooth' });
+      if (sb.bottom > window.innerHeight) window.scrollBy({ top: sb.bottom - window.innerHeight + 8, behavior: reduce ? 'auto' : 'smooth' });
       sec.classList.add('s-flash');                                                    // 0–0,6 с: вспышка звезды
       nodes.forEach(function (n, i) {                                                  // 0,6–2,2 с: лучи к узлам по очереди
         later(function () { rays[i].classList.add('is-on'); }, 600 + i * 180);
@@ -489,7 +497,7 @@
     }
 
     star.addEventListener('click', function () {
-      if (state === 'armed') { if (reduce) { finalFrame(true); showAnswer(); } else run(); }
+      if (state === 'armed') run();
       else if (state === 'running') skipNow();
     });
     skip.addEventListener('click', skipNow);
@@ -503,7 +511,6 @@
     var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { layout(); if (state === 'done') settle(); }, 150); });
 
     sec.classList.add('is-armed'); applyVariant(); layout();
-    if (reduce) { finalFrame(true); state = 'done'; sec.classList.add('is-done'); }   // без движения: сразу финальный кадр
   })();
 
 })();
