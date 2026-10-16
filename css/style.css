@@ -231,6 +231,8 @@ section{position:relative}
   .case-panel__body{padding:0 16px 40px}
   .case-meta{margin-right:56px;font-size:12.5px}
   .star-block{padding-left:22px}
+  .star-block--result{padding:16px 16px 16px 40px}
+  .star-block--result::before{left:17px;top:24px}
 }
 
 /* Коллаж скринов */
