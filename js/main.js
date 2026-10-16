@@ -92,12 +92,12 @@
   /* ---------- Созвездие ---------- */
   (function constellation() {
     var box = $('#constellation'); if (!box) return;
-    var steps = $$('.c-step', box), NS = 'http://www.w3.org/2000/svg', svg, lines = [];
+    var steps = $$('.c-step', box), NS = 'http://www.w3.org/2000/svg', svg, lines = [], pts = [];
     function build() {
       if (svg) svg.remove();
       svg = document.createElementNS(NS, 'svg'); svg.setAttribute('aria-hidden', 'true');
       var b = box.getBoundingClientRect();
-      var pts = steps.map(function (s) { var r = $('.c-star', s).getBoundingClientRect(); return [r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]; });
+      pts = steps.map(function (s) { var r = $('.c-star', s).getBoundingClientRect(); return [r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]; });
       lines = [];
       for (var i = 0; i < pts.length - 1; i++) {
         var l = document.createElementNS(NS, 'line');
@@ -108,12 +108,41 @@
       }
       box.insertBefore(svg, box.firstChild);
     }
+    // янтарный огонёк идёт от шага к шагу, по кругу, пока схема на экране
+    var spark = document.createElement('span'), sparkI = 0, sparkT = null, visible = false;
+    spark.className = 'c-spark'; spark.setAttribute('aria-hidden', 'true'); box.appendChild(spark);
+    function place(i, animate) {
+      spark.style.transition = animate ? 'transform .85s cubic-bezier(.45,0,.25,1), opacity .4s ease' : 'opacity .4s ease';
+      spark.style.transform = 'translate(' + pts[i][0] + 'px,' + pts[i][1] + 'px)';
+    }
+    function hop() {
+      if (!visible || !pts.length) { sparkT = null; return; }
+      if (sparkI >= pts.length - 1) {                    // дошёл до «Внедрения»: гаснет и начинает снова
+        spark.classList.remove('is-on');
+        sparkT = setTimeout(function () { sparkI = 0; place(0, false); spark.classList.add('is-on'); sparkT = setTimeout(hop, 700); }, 1100);
+        return;
+      }
+      sparkI++; place(sparkI, true);
+      sparkT = setTimeout(hop, 1150);
+    }
+    function startSpark() {
+      if (reduce || sparkT || !visible) return;
+      place(sparkI, false); spark.classList.add('is-on'); sparkT = setTimeout(hop, 700);
+    }
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (es) {
+        visible = es[0].isIntersecting;
+        if (visible && box.classList.contains('is-drawn')) startSpark();
+        if (!visible) { clearTimeout(sparkT); sparkT = null; spark.classList.remove('is-on'); }
+      }).observe(box);
+    }
     function light() {
       box.classList.add('is-drawn');
       steps.forEach(function (s, i) { setTimeout(function () { s.classList.add('is-on'); }, reduce ? 0 : i * 320); });
+      setTimeout(startSpark, reduce ? 0 : steps.length * 320 + 600);
     }
     build();
-    var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { var drawn = box.classList.contains('is-drawn'); build(); if (drawn) { lines.forEach(function (l) { l.style.transitionDelay = '0s'; }); } }, 150); });
+    var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { var drawn = box.classList.contains('is-drawn'); build(); if (pts[sparkI]) place(sparkI, false); if (drawn) { lines.forEach(function (l) { l.style.transitionDelay = '0s'; }); } }, 150); });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(build);
     if ('IntersectionObserver' in window && !reduce) {
       var o = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { light(); o.disconnect(); } }, { threshold: .35 });
@@ -310,131 +339,170 @@
       trust: 'Покажу экспертизу вашей команды через выступления, публикации и понятный контент. Клиенты будут выбирать вас, потому что вам верят.',
       all: 'Начну с самой яркой звезды вашего продукта, построю вокруг неё воронку и каналы, а PR закрепит её в глазах клиентов. Узнаваемость, доверие и заявки будут работать вместе.'
     };
-    var KEYS = { aware: ['smi', 'conf', 'partners'], leads: ['social', 'funnel'], trust: ['conf', 'content', 'smi'], all: [] };
-    var state = 'armed', timers = [], rays = [], downs = [], wins = [], coins = [];
+    var ACTIVE = {
+      aware: ['social', 'talks', 'collab', 'wom', 'ugc', 'media'],
+      leads: ['social', 'seo', 'wom', 'ugc', 'paid', 'collab'],
+      trust: ['social', 'seo', 'talks', 'collab', 'wom', 'ugc', 'media'],
+      all: ['social', 'seo', 'wom', 'ugc', 'paid', 'media', 'talks', 'collab']
+    };
+    var COINS = { aware: 4, trust: 5, all: 7, leads: 11 };
+    var WINS = { aware: 30, trust: 18, all: 24, leads: 18 };
+    var state = 'armed', timers = [], rays = [], drops = [], wins = [], coins = [];
 
     function v() { var c = $('input[name=need]:checked', sec); return c ? c.value : 'all'; }
     function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
     function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+    function isActive(n) { return ACTIVE[v()].indexOf(n.dataset.n) > -1; }
 
-    // окна в городе: детерминированный «случайный» набор
-    var WIN_N = 28, seed = 7;
+    // геометрия: звезда сверху по центру, 8 узлов по нижней полудуге, воронка под дугой, город внизу
+    function geo() {
+      var m = mobileMq.matches;
+      return m
+        ? { star: [50, 9], rx: 38, ry: 50, angles: [172, 152, 132, 112, 68, 48, 28, 8], fW: 30, fH: 12, city: 90 }
+        : { star: [50, 14], rx: 41, ry: 40, angles: [168.75, 146.25, 123.75, 101.25, 78.75, 56.25, 33.75, 11.25], fW: 16, fH: 13, city: 89 };
+    }
+    var WIN_N = 30, seed = 7;
     function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
     for (var i = 0; i < WIN_N; i++) {
       var w = document.createElement('span'); w.className = 'win';
       w.style.left = (3 + rnd() * 94).toFixed(2) + '%'; w.style.top = (52 + rnd() * 38).toFixed(2) + '%';
       winBox.appendChild(w); wins.push(w);
     }
-    function center(el) { var r = el.getBoundingClientRect(), b = stage.getBoundingClientRect(); return [r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]; }
     function beam(from, to, cls) {
       var d = document.createElement('span'), dx = to[0] - from[0], dy = to[1] - from[1];
       d.className = 'beam ' + (cls || ''); d.style.left = from[0] + 'px'; d.style.top = from[1] + 'px';
-      d.style.width = Math.hypot(dx, dy) + 'px'; d.style.setProperty('--a', Math.atan2(dy, dx) + 'rad');
+      d.style.width = Math.max(1, Math.hypot(dx, dy)) + 'px'; d.style.setProperty('--a', Math.atan2(dy, dx) + 'rad');
       beamsBox.appendChild(d); return d;
     }
     function layout() {
-      var on = rays.map(function (r) { return r.classList.contains('is-on'); }), on2 = downs.map(function (r) { return r.classList.contains('is-on'); });
-      beamsBox.textContent = ''; rays = []; downs = [];
-      var sc = center($('.pstar__core', sec)), fr = funnel.getBoundingClientRect(), b = stage.getBoundingClientRect();
-      var ftop = [fr.left + fr.width / 2 - b.left, fr.top - b.top + 4];
-      nodes.forEach(function (n, i) {
-        var nc = center($('.node__dot', n));
-        rays.push(beam(sc, nc)); downs.push(beam(nc, ftop, 'beam--down'));
-        if (on[i]) rays[i].classList.add('is-on'); if (on2[i]) downs[i].classList.add('is-on');
+      var onR = rays.map(function (r) { return r.classList.contains('is-on'); });
+      var onD = drops.map(function (r) { return r.classList.contains('is-on'); });
+      var g = geo(), W = stage.clientWidth, H = stage.clientHeight;
+      var px = function (p) { return [p[0] / 100 * W, p[1] / 100 * H]; };
+      // узлы
+      var pts = nodes.map(function (n, i) {
+        var t = g.angles[i] * Math.PI / 180, x = g.star[0] + g.rx * Math.cos(t), y = g.star[1] + g.ry * Math.sin(t);
+        n.style.left = x + '%'; n.style.top = y + '%'; return px([x, y]);
       });
-      // монетки сыплются из горлышка воронки к линии города
-      var spout = [fr.left + fr.width / 2 - b.left, fr.bottom - b.top];
-      var cityTop = b.height * (mobileMq.matches ? .86 : .84);
+      // подписи у краёв сдвигаем внутрь, чтобы не обрезались
+      var sb = stage.getBoundingClientRect(), labBottom = [];
+      nodes.forEach(function (n, i) {
+        var lab = $('.node__label', n); lab.style.setProperty('--sh', '0px');
+        var r = lab.getBoundingClientRect(), pad = 4, sh = 0;
+        if (r.left < sb.left + pad) sh = sb.left + pad - r.left;
+        if (r.right > sb.right - pad) sh = sb.right - pad - r.right;
+        lab.style.setProperty('--sh', sh + 'px');
+        labBottom.push(r.bottom - sb.top);
+      });
+      // общая линия сбора ниже самой нижней подписи, воронка сразу под ней
+      var yc = Math.max.apply(null, labBottom) + 12, rimY = yc + 24, fTopPx = rimY - 3;
+      funnel.style.left = (50 - g.fW / 2) + '%'; funnel.style.width = g.fW + '%';
+      funnel.style.top = fTopPx + 'px'; funnel.style.height = g.fH + '%';
+      beamsBox.textContent = ''; rays = []; drops = [];
+      var sc = px(g.star);
+      nodes.forEach(function (n, i) {
+        rays.push(beam(sc, pts[i], isActive(n) ? '' : 'beam--dim'));
+        if (onR[i]) rays[i].classList.add('is-on');
+      });
+      // вторая волна: активный узел → вниз до общей линии → к своей точке на краю воронки (порядок сохраняется, линии не пересекаются)
+      var act = nodes.map(function (n, i) { return i; }).filter(function (i) { return isActive(nodes[i]); });
+      var rimL = (50 - g.fW * .36) / 100 * W, rimR = (50 + g.fW * .36) / 100 * W;
+      act.sort(function (p, q) { return pts[p][0] - pts[q][0]; }).forEach(function (i, k) {
+        var rx = act.length > 1 ? rimL + (rimR - rimL) * k / (act.length - 1) : W / 2;
+        var d1 = beam([pts[i][0], labBottom[i] + 4], [pts[i][0], yc], 'beam--down'), d2 = beam([pts[i][0], yc], [rx, rimY], 'beam--down');
+        drops.push(d1, d2);
+      });
+      drops.forEach(function (d, k) { if (onD[k]) d.classList.add('is-on'); });
+      // монетки из горлышка к линии города
+      var throat = [W / 2, fTopPx + g.fH / 100 * H], cityY = g.city / 100 * H;
       coinBox.textContent = ''; coins = [];
-      var n = v() === 'leads' ? 9 : 5;
+      var n = COINS[v()];
       for (var k = 0; k < n; k++) {
         var c = document.createElement('span'); c.className = 'coin';
-        c.style.left = spout[0] + 'px'; c.style.top = spout[1] + 'px';
-        c.style.setProperty('--dx', ((k % 2 ? 1 : -1) * (6 + (k * 7) % 22)) + 'px');
-        c.style.setProperty('--fall', Math.max(40, cityTop - spout[1]) + 'px');
-        c.style.setProperty('--d', (k * (n > 5 ? .13 : .2)).toFixed(2) + 's');
+        c.style.left = throat[0] + 'px'; c.style.top = throat[1] + 'px';
+        c.style.setProperty('--dx', ((k % 2 ? 1 : -1) * (4 + (k * 7) % 18)) + 'px');
+        c.style.setProperty('--fall', Math.max(30, cityY - throat[1]) + 'px');
+        c.style.setProperty('--d', (k * (n > 7 ? .11 : .18)).toFixed(2) + 's');
         coinBox.appendChild(c); coins.push(c);
       }
     }
     function applyVariant() {
       var val = v(); sec.dataset.v = val;
-      nodes.forEach(function (n) { n.classList.toggle('is-key', KEYS[val].indexOf(n.dataset.n) > -1); });
-      var lit = val === 'aware' ? WIN_N : 16;
-      if (sec.classList.contains('s-city')) wins.forEach(function (w, i) { w.classList.toggle('is-on', i < lit); });
+      nodes.forEach(function (n) { n.classList.toggle('is-active', isActive(n)); });
+      if (sec.classList.contains('s-city')) wins.forEach(function (w, i) { w.classList.toggle('is-on', i < WINS[val]); });
       answerText.textContent = TEXT[val];
     }
     function setRunning(r) { pills.disabled = r; skip.hidden = !r; sec.classList.toggle('is-running', r); }
+    function settle() { coins.forEach(function (c) { c.style.animation = 'none'; }); }
 
     function finalFrame(instant) {
       clearTimers();
       if (instant) sec.classList.add('is-instant');
       sec.classList.add('s-flash', 's-city', 's-funnel', 's-coins');
-      layout(); applyVariant();
-      rays.concat(downs).forEach(function (r) { r.classList.add('is-on'); });
-      nodes.forEach(function (n) { n.classList.add('is-on'); });
-      coins.forEach(function (c) { c.style.animation = 'none'; });
+      applyVariant(); layout();
+      rays.concat(drops).forEach(function (r) { r.classList.add('is-on'); });
+      nodes.forEach(function (n) { n.classList.add('is-on', 'is-lit'); });
+      settle();
       if (instant) { void sec.offsetWidth; sec.classList.remove('is-instant'); }
     }
-    function showAnswer(withLanding) {
+    function showAnswer() {
       setRunning(false); state = 'done';
       answer.classList.add('is-pre'); card.classList.add('is-pre');
       sec.classList.add('is-done');
       requestAnimationFrame(function () { requestAnimationFrame(function () { answer.classList.remove('is-pre'); }); });
-      var reveal = function () {
+      later(function () {
         card.classList.remove('is-pre');
         if (!reduce) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
         card.focus({ preventScroll: true });
-      };
-      if (!withLanding || reduce) { reveal(); return; }
-      // звезда опускается и превращается в карточку контактов
-      later(function () {
-        var s = star.getBoundingClientRect(), c = card.getBoundingClientRect();
-        star.style.transform = 'translate(' + (c.left + c.width / 2 - s.left - s.width / 2) + 'px,' + (c.top + 40 - s.top - s.height / 2) + 'px) scale(.35)';
-        star.classList.add('is-landed');
-        later(reveal, 450);
-      }, 700);
+      }, reduce ? 0 : 600);
     }
     function run() {
       state = 'running'; setRunning(true); applyVariant(); layout();
-      // на телефоне показываем сцену целиком: звезда, созвездие, воронка и город в одном экране
       var sb = stage.getBoundingClientRect();
       if (sb.bottom > window.innerHeight) window.scrollBy({ top: sb.bottom - window.innerHeight + 8, behavior: 'smooth' });
-      sec.classList.add('s-flash');                                   // 0–0,6 с: вспышка
-      rays.forEach(function (r, i) { later(function () { rays[i].classList.add('is-on'); }, 600 + i * 230); });
-      nodes.forEach(function (n, i) { later(function () { n.classList.add('is-on'); }, 900 + i * 230); });
-      later(function () {                                              // 2–3 с: окна города
+      sec.classList.add('s-flash');                                                    // 0–0,6 с: вспышка звезды
+      nodes.forEach(function (n, i) {                                                  // 0,6–2,2 с: лучи к узлам по очереди
+        later(function () { rays[i].classList.add('is-on'); }, 600 + i * 180);
+        later(function () { n.classList.add('is-on'); }, 900 + i * 180);
+      });
+      nodes.filter(isActive).forEach(function (n, k) { later(function () { n.classList.add('is-lit'); }, 2350 + k * 70); }); // активные узлы загораются
+      later(function () { sec.classList.add('s-funnel'); }, 2800);                    // линии к воронке
+      drops.forEach(function (d, k) { later(function () { drops[k].classList.add('is-on'); }, 2900 + Math.floor(k / 2) * 80 + (k % 2) * 300); });
+      later(function () {                                                              // окна в городе
         sec.classList.add('s-city');
-        var lit = v() === 'aware' ? WIN_N : 16;
-        wins.slice(0, lit).forEach(function (w, i) { later(function () { w.classList.add('is-on'); }, i * (900 / lit)); });
-      }, 2000);
-      downs.forEach(function (r, i) { later(function () { downs[i].classList.add('is-on'); }, 3000 + i * 90); }); // 3–4,5 с: воронка
-      later(function () { sec.classList.add('s-funnel'); }, 3200);
-      later(function () { sec.classList.add('s-coins'); }, 3500);
-      later(function () { showAnswer(true); }, 4800);
+        var lit = WINS[v()];
+        wins.slice(0, lit).forEach(function (w, i) { later(function () { w.classList.add('is-on'); }, i * (800 / lit)); });
+      }, 3700);
+      later(function () { sec.classList.add('s-coins'); }, 4400);                     // монетки
+      later(showAnswer, 6000);                                                         // ответ и карточка
     }
-    function skipNow() { if (state !== 'running') return; finalFrame(true); showAnswer(false); }
+    function skipNow() { if (state !== 'running') return; finalFrame(true); showAnswer(); }
     function reset() {
       clearTimers(); state = 'armed'; setRunning(false);
       sec.classList.remove('is-done', 's-flash', 's-city', 's-funnel', 's-coins');
-      star.classList.remove('is-landed'); star.style.transform = '';
-      rays.concat(downs).forEach(function (r) { r.classList.remove('is-on'); });
-      nodes.forEach(function (n) { n.classList.remove('is-on'); });
+      rays.concat(drops).forEach(function (r) { r.classList.remove('is-on'); });
+      nodes.forEach(function (n) { n.classList.remove('is-on', 'is-lit'); });
       wins.forEach(function (w) { w.classList.remove('is-on'); });
       coins.forEach(function (c) { c.style.animation = ''; });
-      var t = $('#finale-title'); t.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      $('#finale-title').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
       star.focus({ preventScroll: true });
     }
 
     star.addEventListener('click', function () {
-      if (state === 'armed') { if (reduce) { finalFrame(true); showAnswer(false); } else run(); }
+      if (state === 'armed') { if (reduce) { finalFrame(true); showAnswer(); } else run(); }
       else if (state === 'running') skipNow();
     });
     skip.addEventListener('click', skipNow);
     relight.addEventListener('click', reset);
-    $$('input[name=need]', sec).forEach(function (r) { r.addEventListener('change', function () { applyVariant(); if (state === 'done') layout(); coins.forEach(function (c) { c.style.animation = 'none'; }); }); });
-    var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { if (state !== 'armed') layout(); if (state === 'done') coins.forEach(function (c) { c.style.animation = 'none'; }); }, 150); });
+    $$('input[name=need]', sec).forEach(function (r) {
+      r.addEventListener('change', function () {
+        applyVariant(); layout();
+        if (state === 'done') { rays.concat(drops).forEach(function (x) { x.classList.add('is-on'); }); nodes.forEach(function (n) { n.classList.add('is-on', 'is-lit'); }); settle(); }
+      });
+    });
+    var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { layout(); if (state === 'done') settle(); }, 150); });
 
-    sec.classList.add('is-armed'); applyVariant();
+    sec.classList.add('is-armed'); applyVariant(); layout();
     if (reduce) { finalFrame(true); state = 'done'; sec.classList.add('is-done'); }   // без движения: сразу финальный кадр
   })();
 
