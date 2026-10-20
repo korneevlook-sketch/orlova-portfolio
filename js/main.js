@@ -162,7 +162,7 @@
 
   /* ---------- Чем могу помочь: звёзды загораются по очереди ---------- */
   (function helpStars() {
-    var items = $$('.help-item'), art = $('#star-art'); if (!items.length) return;
+    var items = $$('.need'), art = null; if (!items.length) return;
     if (!('IntersectionObserver' in window)) { items.forEach(function (i) { i.classList.add('is-lit'); }); if (art) art.classList.add('is-flare'); return; }
     var o = new IntersectionObserver(function (es) {
       es.forEach(function (e) {
