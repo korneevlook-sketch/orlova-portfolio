@@ -92,15 +92,17 @@
   /* ---------- Созвездие ---------- */
   (function constellation() {
     var box = $('#constellation'); if (!box) return;
-    var steps = $$('.c-step', box), wrap, lines = [], pts = [];
+    var steps = $$('.step', box), wrap, lines = [], pts = [], linked = [];
     function build() {
       if (wrap) wrap.remove();
       wrap = document.createElement('div'); wrap.className = 'c-beams'; wrap.setAttribute('aria-hidden', 'true');
       var b = box.getBoundingClientRect();
-      pts = steps.map(function (s) { var r = $('.c-star', s).getBoundingClientRect(); return [r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]; });
-      lines = [];
+      pts = steps.map(function (s) { var r = $('.step__star', s).getBoundingClientRect(); return [r.left + r.width / 2 - b.left, r.top + r.height / 2 - b.top]; });
+      lines = []; linked = [];
       for (var i = 0; i < pts.length - 1; i++) {
         var l = document.createElement('span'), dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1];
+        linked[i] = Math.abs(dy) < 8 || Math.abs(dx) < 8;          // линия только внутри ряда (компьютер) или колонки (телефон)
+        if (!linked[i]) continue;
         l.className = 'c-beam'; l.style.left = pts[i][0] + 'px'; l.style.top = pts[i][1] + 'px';
         l.style.width = Math.hypot(dx, dy) + 'px'; l.style.setProperty('--a', Math.atan2(dy, dx) + 'rad');
         l.style.transitionDelay = (i * .32) + 's';
@@ -117,7 +119,7 @@
     }
     function hop() {
       if (!visible || !pts.length) { sparkT = null; return; }
-      if (reduce) {                                       // без движения: гаснет на одном шаге и загорается на следующем
+      if (reduce || (sparkI < pts.length - 1 && !linked[sparkI])) {   // без движения или переход на новый ряд: гаснет и загорается на следующем шаге
         spark.classList.remove('is-on');
         sparkT = setTimeout(function () {
           sparkI = sparkI >= pts.length - 1 ? 0 : sparkI + 1; place(sparkI, false); spark.classList.add('is-on');
@@ -332,6 +334,38 @@
       ds.forEach(function (d, i) { d.classList.toggle('is-on', i === best); });
     }
     list.addEventListener('scroll', function () { requestAnimationFrame(upd); }, { passive: true }); upd();
+  })();
+
+  /* ---------- Отзывы: карусель ---------- */
+  (function reviewsCarousel() {
+    var track = $('#rv-track'); if (!track) return;
+    var cards = $$('.rv-card', track), dots = $('#rv-dots'), prev = $('#rv-prev'), next = $('#rv-next');
+    cards.forEach(function (c, i) {
+      var d = document.createElement('button'); d.type = 'button'; d.setAttribute('aria-label', 'Отзыв ' + (i + 1));
+      d.addEventListener('click', function () { go(i); }); dots.appendChild(d);
+      var more = $('.rv-card__more', c), full = $('.rv-card__full', c);
+      more.addEventListener('click', function () {
+        var open = full.hidden; full.hidden = !open;
+        more.setAttribute('aria-expanded', open); more.textContent = open ? 'Свернуть' : 'Читать полностью';
+      });
+    });
+    var ds = $$('button', dots);
+    function current() {
+      var x = track.scrollLeft, best = 0, bd = 1e9;
+      cards.forEach(function (c, i) { var d = Math.abs(c.offsetLeft - track.offsetLeft - x); if (d < bd) { bd = d; best = i; } });
+      return best;
+    }
+    function go(i) { i = Math.max(0, Math.min(cards.length - 1, i)); track.scrollTo({ left: cards[i].offsetLeft - track.offsetLeft, behavior: reduce ? 'auto' : 'smooth' }); }
+    function upd() {
+      var c = current(), end = track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
+      ds.forEach(function (d, i) { d.setAttribute('aria-current', i === c ? 'true' : 'false'); });
+      prev.disabled = track.scrollLeft < 4; next.disabled = end;
+    }
+    prev.addEventListener('click', function () { go(current() - 1); });
+    next.addEventListener('click', function () { go(current() + 1); });
+    track.addEventListener('keydown', function (e) { if (e.key === 'ArrowRight') { e.preventDefault(); go(current() + 1); } if (e.key === 'ArrowLeft') { e.preventDefault(); go(current() - 1); } });
+    track.addEventListener('scroll', function () { requestAnimationFrame(upd); }, { passive: true });
+    window.addEventListener('resize', upd); upd();
   })();
 
   /* ---------- Персональная звезда ---------- */
